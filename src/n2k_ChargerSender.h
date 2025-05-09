@@ -1,0 +1,104 @@
+#include <N2kMessages.h>
+#include <NMEA2000.h>
+
+#include "sensesp/system/saveable.h"
+#include "sensesp/transforms/lambda_transform.h"
+#include "sensesp/transforms/repeat.h"
+#include "sensesp_base_app.h"
+
+namespace halmet {
+class N2kChargerSender : public sensesp::FileSystemSaveable {  // 127507
+ public:
+  N2kChargerSender(String config_path, uint8_t charger_instance,
+                   uint8_t battery_instance, tNMEA2000* nmea2000)
+      : sensesp::FileSystemSaveable{config_path},
+        charger_instance_{charger_instance},
+        battery_instance_{battery_instance},
+        nmea2000_{nmea2000},
+        repeat_interval_{1000},  // In ms. Dictated by NMEA 2000 standard!
+        expiry_{30000}           // In ms. When the inputs expire.
+  {
+    this->load();
+    this->initialize_members(repeat_interval_, expiry_);
+    if (this->enabled_)
+      sensesp::event_loop()->onRepeat(repeat_interval_, [this]() {
+        tN2kMsg N2kMsg;
+        // At the moment, the PGN is sent regardless of whether all the values
+        // are invalid or not.
+        SetN2kChargerStatus(N2kMsg, this->charger_instance_,
+                            this->battery_instance_, this->chargeState->get(),
+                            this->chargerMode->get(), this->enabled->get(),
+                            this->equalizationPending->get(),
+                            this->equalizationTimeRemaining->get());
+        this->nmea2000_->SendMsg(N2kMsg);
+      });
+  }
+
+  virtual bool from_json(const JsonObject& config) override {
+    if (!config["enabled"].is<bool>()) {
+      return false;
+    }
+    enabled_ = config["enabled"];
+
+    if (!config["battery_instance"].is<int>()) {
+      return false;
+    }
+    battery_instance_ = config["battery_instance"];
+
+    if (!config["charger_instance"].is<int>()) {
+      return false;
+    }
+    charger_instance_ = config["charger_instance"];
+    return true;
+  }
+
+  virtual bool to_json(JsonObject& config) override {
+    config["enabled"] = enabled_;
+    config["battery_instance"] = battery_instance_;
+    config["charger_instance"] = charger_instance_;
+    return true;
+  }
+
+  std::shared_ptr<sensesp::RepeatStopping<tN2kChargeState>> chargeState;
+  std::shared_ptr<sensesp::RepeatStopping<tN2kChargerMode>> chargerMode;
+  std::shared_ptr<sensesp::RepeatStopping<tN2kOnOff>> enabled;
+  std::shared_ptr<sensesp::RepeatStopping<tN2kOnOff>> equalizationPending;
+  std::shared_ptr<sensesp::RepeatExpiring<double>> equalizationTimeRemaining;
+
+ protected:
+  unsigned int repeat_interval_;
+  unsigned int expiry_;
+  tNMEA2000* nmea2000_;
+
+  bool enabled_ = false;
+  uint8_t battery_instance_ = 0;
+  uint8_t charger_instance_ = 0;
+
+ private:
+  void initialize_members(unsigned int repeat_interval, unsigned int expiry) {
+    // Initialize the RepeatExpiring objects
+    chargeState = std::make_shared<sensesp::RepeatStopping<tN2kChargeState>>(
+        repeat_interval, expiry);
+    chargerMode = std::make_shared<sensesp::RepeatStopping<tN2kChargerMode>>(
+        repeat_interval, expiry);
+    enabled = std::make_shared<sensesp::RepeatStopping<tN2kOnOff>>(
+        repeat_interval, expiry);
+    equalizationPending = std::make_shared<sensesp::RepeatStopping<tN2kOnOff>>(
+        repeat_interval, expiry);
+    equalizationTimeRemaining =
+        std::make_shared<sensesp::RepeatExpiring<double>>(repeat_interval,
+                                                          expiry);
+  }
+};
+
+const String ConfigSchema(const N2kChargerSender& obj) {
+  return R"###({
+       "type": "object",
+       "properties": {
+         "enabled": { "title": "enabled", "type": "bool", "description": "enable sending" },
+         "battery_instance": { "title": "battery instance", "type": "integer", "description": "battery NMEA 2000 instance number (0-253)" },
+         "charger_instance": { "title": "charger instance", "type": "integer", "description": "charger NMEA 2000 instance number (0-253)" }
+       }
+     })###";
+}
+}  // namespace halmet

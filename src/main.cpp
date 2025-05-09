@@ -46,6 +46,7 @@
 #include "sensesp/net/http_server.h"
 #include "sensesp/net/networking.h"
 
+#include "SignalKNMEAWifiGateway.h"
 #include "NMEASignalKWifiGateway.h"
 
 using namespace sensesp;
@@ -217,6 +218,12 @@ void setup() {
   ConfigItem(nmeaSignalKWifiGateway)
     ->set_title("NMEA 2000 To SignalK Gateway")
     ->set_sort_order(40);
+    
+  auto* signalKNMEAWifiGateway = new SignalKNMEAWifiGateway("/SignalK To NMEA 2000/",
+    nmea2000, false, 1, 2);
+  ConfigItem(signalKNMEAWifiGateway)
+    ->set_title("SignalK Gateway To NMEA 2000")
+    ->set_sort_order(50);
 
   // No need to parse the messages at every single loop iteration; 1 ms will do
   event_loop()->onRepeat(1, []() { nmea2000->ParseMessages(); });

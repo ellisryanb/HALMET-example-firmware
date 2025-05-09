@@ -3,6 +3,12 @@
 
 #include <N2kMessages.h>
 #include <NMEA2000.h>
+#include <n2k_DCBatStatusSender.h>
+#include <n2k_DCStatusSender.h>
+#include <n2k_ChargerSender.h>
+#include <n2k_InverterSender.h>
+#include <n2k_UtilityPhaseASender.h>
+#include <n2k_DCVoltageCurrentSender.h>
 
 #include "sensesp/system/saveable.h"
 #include "sensesp/transforms/lambda_transform.h"
