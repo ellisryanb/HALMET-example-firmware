@@ -12,6 +12,9 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
+#define ENABLE_SIGNALK
+#define ENABLE_NMEA2000_OUTPUT
+
 #ifdef ENABLE_NMEA2000_OUTPUT
 #include <NMEA2000_esp32.h>
 #endif
@@ -42,6 +45,8 @@
 #include "halmet_serial.h"
 #include "sensesp/net/http_server.h"
 #include "sensesp/net/networking.h"
+
+#include "NMEASignalKWifiGateway.h"
 
 using namespace sensesp;
 using namespace halmet;
@@ -119,7 +124,7 @@ void setup() {
                     //->set_wifi("My WiFi SSID", "my_wifi_password")
                     //->set_sk_server("192.168.10.3", 80)
                     // EDIT: Enable OTA updates with a password.
-                    //->enable_ota("my_ota_password")
+                    ->enable_ota("nautique")
                     ->get_app();
 
   // initialize the I2C bus
@@ -152,16 +157,20 @@ void setup() {
   // Reserve enough buffer for sending all messages.
   nmea2000->SetN2kCANSendFrameBufSize(250);
   nmea2000->SetN2kCANReceiveFrameBufSize(250);
+  nmea2000->SetDeviceCount(3);
 
-  // Set Product information
-  // EDIT: Change the values below to match your device.
-  nmea2000->SetProductInformation(
-      "20231229",  // Manufacturer's Model serial code (max 32 chars)
-      104,         // Manufacturer's product code
-      "HALMET",    // Manufacturer's Model ID (max 33 chars)
-      "1.0.0",     // Manufacturer's Software version code (max 40 chars)
-      "1.0.0"      // Manufacturer's Model version (max 24 chars)
-  );
+  for (size_t i = 0; i < 3; i++)
+  {
+    nmea2000->SetProductInformation(
+        "20231229",  // Manufacturer's Model serial code (max 32 chars)
+        104,         // Manufacturer's product code
+        "HALMET",    // Manufacturer's Model ID (max 33 chars)
+        "1.0.0",     // Manufacturer's Software version code (max 40 chars)
+        "1.0.0",     // Manufacturer's Model version (max 24 chars)
+        0xff,  0xffff, 0xff, 
+        i
+    );
+  }
 
   // For device class/function information, see:
   // http://www.nmea.org/Assets/20120726%20nmea%202000%20class%20&%20function%20codes%20v%202.00.pdf
@@ -174,15 +183,40 @@ void setup() {
   // EDIT: Change the class and function values below to match your device.
   nmea2000->SetDeviceInformation(
       GetBoardSerialNumber(),  // Unique number. Use e.g. Serial number.
-      140,                     // Device function: Engine
-      50,                      // Device class: Propulsion
-      2046);                   // Manufacturer code
+      132,  // Device function=NMEA 2000 to Analog Gateway. See codes on http://www.nmea.org/Assets/20120726%20nmea%202000%20class%20&%20function%20codes%20v%202.00.pdf
+      25,   // Device class=Inter/Intranetwork Device. See codes on  http://www.nmea.org/Assets/20120726%20nmea%202000%20class%20&%20function%20codes%20v%202.00.pdf
+      2046, // Manufacturer code
+      4,
+      0
+  );
+  nmea2000->SetDeviceInformation(
+    GetBoardSerialNumber()+1,  // Unique number. Use e.g. Serial number.
+    153,  // Device function=NMEA 2000 to Analog Gateway. See codes on http://www.nmea.org/Assets/20120726%20nmea%202000%20class%20&%20function%20codes%20v%202.00.pdf
+    35,   // Device class=Inter/Intranetwork Device. See codes on  http://www.nmea.org/Assets/20120726%20nmea%202000%20class%20&%20function%20codes%20v%202.00.pdf
+    358, // Manufacturer code
+    4,
+    1
+  );
+  nmea2000->SetDeviceInformation(
+    GetBoardSerialNumber()+2,  // Unique number. Use e.g. Serial number.
+    154,  // Device function=NMEA 2000 to Analog Gateway. See codes on http://www.nmea.org/Assets/20120726%20nmea%202000%20class%20&%20function%20codes%20v%202.00.pdf
+    35,   // Device class=Inter/Intranetwork Device. See codes on  http://www.nmea.org/Assets/20120726%20nmea%202000%20class%20&%20function%20codes%20v%202.00.pdf
+    358, // Manufacturer code
+    4,
+    2
+  );
 
   nmea2000->SetMode(tNMEA2000::N2km_NodeOnly,
                     71  // Default N2k node address
   );
   nmea2000->EnableForward(false);
   nmea2000->Open();
+
+  auto* nmeaSignalKWifiGateway = new NMEASignalKWifiGateway("/NMEA 2000 To SignalK/", 
+    nmea2000, sensesp_app->get_ws_client()->get_server_address());
+  ConfigItem(nmeaSignalKWifiGateway)
+    ->set_title("NMEA 2000 To SignalK Gateway")
+    ->set_sort_order(40);
 
   // No need to parse the messages at every single loop iteration; 1 ms will do
   event_loop()->onRepeat(1, []() { nmea2000->ParseMessages(); });
